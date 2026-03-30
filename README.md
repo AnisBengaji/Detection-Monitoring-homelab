@@ -67,7 +67,7 @@ A virtualized SOC environment built on Pop OS using VMware Workstation, simulati
 
 ## Attack Scenarios & Detection
 
-### 🔴 Kali Linux Attack Chain
+###  Kali Linux Attack Chain
 
 #### Phase 1 — Reconnaissance
 
@@ -154,7 +154,7 @@ index=wineventlog EventCode=4625 | stats count by src_ip user | sort -count
 
 ---
 
-### 🔵 Atomic Red Team — MITRE ATT&CK Simulation
+###  Atomic Red Team — MITRE ATT&CK Simulation
 
 Atomic Red Team installed on Windows DC via `Invoke-AtomicRedTeam`. Each test simulates a real adversary technique mapped to MITRE ATT&CK and validates detection in Splunk via Sysmon telemetry.
 
@@ -204,16 +204,16 @@ index=wineventlog source="WinEventLog:Microsoft-Windows-Sysmon/Operational"
 
 | Phase | Technique ID | Technique | Tool | Detected |
 |-------|-------------|-----------|------|----------|
-| Reconnaissance | T1595 | Active Scanning | Nmap | ✅ Suricata |
-| Reconnaissance | T1046 | Network Service Scanning | Nmap | ✅ Suricata |
-| Enumeration | T1135 | Network Share Discovery | CrackMapExec | ✅ Suricata |
-| Enumeration | T1087 | Account Discovery | Nmap SMB scripts | ✅ Suricata |
-| Credential Access | T1110 | Brute Force | Hydra + Metasploit | ✅ Suricata + EID 4625 |
-| Credential Access | T1557 | Adversary in the Middle | NTLM Capture | ✅ Suricata |
-| Discovery | T1057 | Process Discovery | Atomic Red Team | ✅ Sysmon EID 1 |
-| Discovery | T1087.001 | Local Account Discovery | Atomic Red Team | ✅ Sysmon EID 1 |
-| Execution | T1059.001 | PowerShell | Atomic Red Team | ✅ Sysmon EID 1 |
-| Credential Access | T1003.001 | LSASS Dump | Atomic Red Team | ✅ Sysmon EID 10 |
+| Reconnaissance | T1595 | Active Scanning | Nmap | Suricata |
+| Reconnaissance | T1046 | Network Service Scanning | Nmap |  Suricata |
+| Enumeration | T1135 | Network Share Discovery | CrackMapExec |  Suricata |
+| Enumeration | T1087 | Account Discovery | Nmap SMB scripts |  Suricata |
+| Credential Access | T1110 | Brute Force | Hydra + Metasploit |  Suricata + EID 4625 |
+| Credential Access | T1557 | Adversary in the Middle | NTLM Capture |  Suricata |
+| Discovery | T1057 | Process Discovery | Atomic Red Team |  Sysmon EID 1 |
+| Discovery | T1087.001 | Local Account Discovery | Atomic Red Team |  Sysmon EID 1 |
+| Execution | T1059.001 | PowerShell | Atomic Red Team |  Sysmon EID 1 |
+| Credential Access | T1003.001 | LSASS Dump | Atomic Red Team |  Sysmon EID 10 |
 
 ---
 
@@ -289,7 +289,7 @@ Building this lab from scratch exposed a number of real-world challenges that si
 
 ---
 
-### 🔧 Infrastructure & Networking
+###  Infrastructure & Networking
 
 **VMware Host-Only Networking and Promiscuous Mode**
 The single most time-consuming challenge in this lab was getting Suricata to see network traffic. VMware Workstation on Linux blocks promiscuous mode by default at the kernel level, meaning even with the correct VMnet assignments, the Suricata VM received no mirrored traffic. The fix required editing the VM's `.vmx` file directly to add `ethernet0.noPromisc = "FALSE"` and running `chmod a+rw /dev/vmnet*` on the host after every reboot. I eventually automated this with a systemd service. This mirrors a real-world challenge where network taps and SPAN ports require careful physical and logical configuration to function correctly.
@@ -302,7 +302,7 @@ Getting the Splunk Universal Forwarder on the Windows DC to reach the Splunk ser
 
 ---
 
-### 📡 Detection & Log Ingestion
+###  Detection & Log Ingestion
 
 **Splunk Forwarder Pointing to the Wrong IP**
 After migrating the Splunk VM from NAT to a dedicated network segment, the Universal Forwarder on the Windows DC was still pointing to the old NAT IP (`172.16.5.128`). Logs appeared to be configured correctly but nothing was arriving in Splunk. The fix was straightforward once identified — removing and re-adding the forward server — but it reinforced an important SOC lesson: always verify end-to-end connectivity, not just configuration files. A misconfigured forwarder silently drops logs with no obvious alert.
@@ -315,7 +315,7 @@ The Windows DC was operating in UTC+1 while the Splunk indexer was in UTC. This 
 
 ---
 
-### 🛡️ Intrusion Detection
+###  Intrusion Detection
 
 **Suricata Interface Configuration**
 The default Suricata configuration references `eth0` across multiple sections of `suricata.yaml`. On Ubuntu 22.04 the interface is named `ens33`. Despite updating the primary `af-packet` section, other sections of the config still referenced `eth0`, causing silent failures where Suricata started but processed zero packets. Lesson: always validate the full configuration file, not just the obvious section, and use `suricata -T -c suricata.yaml -v` to test before deploying.
@@ -325,7 +325,7 @@ A physical SPAN port mirrors all traffic on a switch to a designated monitoring 
 
 ---
 
-### ⚔️ Attack Simulation
+###  Attack Simulation
 
 **Atomic Red Team and Field Parsing**
 When running Atomic Red Team tests, the Sysmon events were arriving in Splunk but in raw XML format, making it impossible to filter by process name or command line using standard field names. This led me to write custom `rex` extractions to parse `Image`, `CommandLine`, and `User` fields from the raw XML. This was an unexpectedly valuable exercise — understanding how to extract fields from unparsed logs is a core skill for any SOC analyst dealing with non-standard log sources.
@@ -335,7 +335,7 @@ Running the Metasploit SMB login scanner initially produced alerts in Suricata b
 
 ---
 
-### 📝 General
+###  General
 
 **Documentation is Part of the Lab**
 The most underestimated part of this project was documentation. Keeping track of what worked, what didn't, and why took as much time as the technical work itself. This discipline — of writing down decisions, configurations, and failures — is directly transferable to incident response work where a clear timeline and evidence trail are critical.
