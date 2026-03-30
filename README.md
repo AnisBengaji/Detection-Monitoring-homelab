@@ -283,16 +283,68 @@ index=suricata OR index=wineventlog (EventCode=4625 OR EventCode=4624 OR event_t
 
 ---
 
-This project simulates a real-world SOC capable of:
+## Lessons Learned
 
-Detecting advanced threats
-Correlating multi-source data
-==> Next Step 
-Responding automatically to attacks
+Building this lab from scratch exposed a number of real-world challenges that significantly deepened my understanding of SOC infrastructure, network engineering, and detection engineering. The problems I ran into — and solved — taught me more than any guided tutorial would have.
 
+---
+
+### 🔧 Infrastructure & Networking
+
+**VMware Host-Only Networking and Promiscuous Mode**
+The single most time-consuming challenge in this lab was getting Suricata to see network traffic. VMware Workstation on Linux blocks promiscuous mode by default at the kernel level, meaning even with the correct VMnet assignments, the Suricata VM received no mirrored traffic. The fix required editing the VM's `.vmx` file directly to add `ethernet0.noPromisc = "FALSE"` and running `chmod a+rw /dev/vmnet*` on the host after every reboot. I eventually automated this with a systemd service. This mirrors a real-world challenge where network taps and SPAN ports require careful physical and logical configuration to function correctly.
+
+**pfSense as the Network Core**
+Using pfSense to segment five separate networks taught me how enterprise firewalls actually work — not just allow/deny rules but DHCP scoping per interface, inter-VLAN routing decisions, and how DNS resolution differs per network segment. A subtle but important lesson: VMware's own DHCP service was competing with pfSense and winning, assigning wrong IPs to VMs. Disabling VMware DHCP on all host-only networks and letting pfSense handle everything resolved persistent connectivity issues across the entire lab.
+
+**IP Addressing and Routing Across Segments**
+Getting the Splunk Universal Forwarder on the Windows DC to reach the Splunk server on a different subnet required understanding that pfSense must have explicit routing between VICTIMNET and the SPLUNK network. Simply having both VMs running was not enough — firewall rules had to explicitly permit the traffic flow. This is a lesson I would apply directly in a real SOC environment when troubleshooting log gaps.
+
+---
+
+### 📡 Detection & Log Ingestion
+
+**Splunk Forwarder Pointing to the Wrong IP**
+After migrating the Splunk VM from NAT to a dedicated network segment, the Universal Forwarder on the Windows DC was still pointing to the old NAT IP (`172.16.5.128`). Logs appeared to be configured correctly but nothing was arriving in Splunk. The fix was straightforward once identified — removing and re-adding the forward server — but it reinforced an important SOC lesson: always verify end-to-end connectivity, not just configuration files. A misconfigured forwarder silently drops logs with no obvious alert.
+
+**Sysmon XML Rendering vs Plain Text**
+Setting `renderXml = true` in the Splunk forwarder inputs.conf caused Sysmon events to arrive as raw XML blobs rather than parsed fields. This meant standard Splunk searches like `Image=` or `CommandLine=` returned no results. The workaround was using `rex` field extractions to parse the XML inline. The permanent fix was setting `renderXml = false`. This taught me the importance of verifying that log sources are not just arriving in SIEM but arriving in a format that's actually searchable and useful for detection.
+
+**Timezone Mismatch Between Windows DC and Splunk**
+The Windows DC was operating in UTC+1 while the Splunk indexer was in UTC. This caused a consistent one-hour gap where recent events appeared to have "0 results" when searching with relative time filters. Switching Splunk searches to "All time" revealed the events immediately. The permanent fix was aligning timezones across all VMs and configuring NTP properly. In a real SOC environment, timezone misalignment across log sources is a known blind spot that can cause analysts to miss alerts during investigations.
+
+---
+
+### 🛡️ Intrusion Detection
+
+**Suricata Interface Configuration**
+The default Suricata configuration references `eth0` across multiple sections of `suricata.yaml`. On Ubuntu 22.04 the interface is named `ens33`. Despite updating the primary `af-packet` section, other sections of the config still referenced `eth0`, causing silent failures where Suricata started but processed zero packets. Lesson: always validate the full configuration file, not just the obvious section, and use `suricata -T -c suricata.yaml -v` to test before deploying.
+
+**SPAN Port Limitations in a Virtual Environment**
+A physical SPAN port mirrors all traffic on a switch to a designated monitoring port. In VMware Workstation, replicating this behavior requires a bridge configuration in pfSense and promiscuous mode enabled at the hypervisor level. When this didn't work reliably, I pivoted to placing Suricata directly on the VICTIMNET segment, which proved more effective and simpler to maintain. The lesson here is that virtual environments sometimes require creative workarounds compared to physical infrastructure.
+
+---
+
+### ⚔️ Attack Simulation
+
+**Atomic Red Team and Field Parsing**
+When running Atomic Red Team tests, the Sysmon events were arriving in Splunk but in raw XML format, making it impossible to filter by process name or command line using standard field names. This led me to write custom `rex` extractions to parse `Image`, `CommandLine`, and `User` fields from the raw XML. This was an unexpectedly valuable exercise — understanding how to extract fields from unparsed logs is a core skill for any SOC analyst dealing with non-standard log sources.
+
+**Brute Force Detection Requires Baseline**
+Running the Metasploit SMB login scanner initially produced alerts in Suricata but not meaningful Windows EventID 4625 entries, because the default audit policy on Windows Server doesn't always log failed network authentication attempts. Enabling the audit policy with `auditpol /set /subcategory:"Logon" /failure:enable` was required. This mirrors a real-world gap — many organizations run default Windows audit policies that are insufficient for detecting credential attacks.
+
+---
+
+### 📝 General
+
+**Documentation is Part of the Lab**
+The most underestimated part of this project was documentation. Keeping track of what worked, what didn't, and why took as much time as the technical work itself. This discipline — of writing down decisions, configurations, and failures — is directly transferable to incident response work where a clear timeline and evidence trail are critical.
+
+**Iterative Problem Solving Over Perfection**
+Almost nothing worked on the first attempt. The approach that worked best was isolating one variable at a time — confirming traffic existed with `tcpdump` before debugging Suricata, confirming port connectivity with `Test-NetConnection` before debugging Splunk forwarding. This systematic methodology is exactly how SOC analysts and incident responders approach unknown problems in production environments.
 
 ## References
-
+- [Cyberwox Academy Homelab Guide](https://blog.cyberwoxacademy.com/post/building-a-cybersecurity-homelab) check it for homelab installation + setup
 - [Suricata Documentation](https://docs.suricata.io)
 - [Splunk Documentation](https://docs.splunk.com)
 - [MITRE ATT&CK Framework](https://attack.mitre.org)
