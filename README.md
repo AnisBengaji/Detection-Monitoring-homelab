@@ -63,6 +63,19 @@ A virtualized SOC environment built on Pop OS using VMware Workstation, simulati
 - Security, System, and Application logs forwarded via Universal Forwarder
 - Covers EventIDs: 4624, 4625, 4634, 4672, 4688, 4720, 4732
 
+### Suricata → Splunk
+Suricata deployed on the monitoring network to inspect mirrored traffic
+Logs generated in EVE JSON format (/var/log/suricata/eve.json)
+
+Log Forwarding:
+Splunk Universal Forwarder installed on the Suricata VM
+Monitors the EVE log file:
+
+/var/log/suricata/eve.json
+- Logs forwarded to Splunk indexer at:
+- 192.168.4.10:9997
+
+
 ---
 
 ## Attack Scenarios & Detection
