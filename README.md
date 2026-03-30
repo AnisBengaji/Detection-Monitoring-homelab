@@ -4,6 +4,8 @@ A virtualized SOC environment built on Pop OS using VMware Workstation, simulati
 
 ---
 
+## Architecture
+
 ![Architecture](newArchitecture.png)
 
 ---
@@ -32,8 +34,6 @@ A virtualized SOC environment built on Pop OS using VMware Workstation, simulati
 | SPANPORT | — | em4 | Traffic mirroring |
 | SPLUNK | 192.168.4.0/24 | em5 | SIEM isolation |
 
-All networks are isolated via pfSense with dedicated firewall rules per segment. pfSense acts as the DHCP server and default gateway for all internal networks.
-
 ---
 
 ## Data Sources Ingested
@@ -53,18 +53,15 @@ All networks are isolated via pfSense with dedicated firewall rules per segment.
 ### pfSense Syslog → Splunk
 - pfSense configured to forward syslog to Splunk UDP port 514
 - Covers firewall allow/deny rules, interface traffic, DNS and DHCP activity
-- Visible in Splunk under `index=pfsense`
 
 ### Sysmon → Splunk
 - Sysmon installed on Windows DC using SwiftOnSecurity config
-- Splunk Universal Forwarder installed on Windows DC
-- Configured to monitor `Microsoft-Windows-Sysmon/Operational` event log
+- Splunk Universal Forwarder monitors `Microsoft-Windows-Sysmon/Operational`
 - Forwards to Splunk indexer at `192.168.4.10:9997`
-- Visible in Splunk under `index=wineventlog source="WinEventLog:Microsoft-Windows-Sysmon/Operational"`
 
 ### Windows Event Logs → Splunk
 - Security, System, and Application logs forwarded via Universal Forwarder
-- Covers EventIDs: 4624, 4625, 4634, 4672, 4688, 4698, 4720, 4732
+- Covers EventIDs: 4624, 4625, 4634, 4672, 4688, 4720, 4732
 
 ---
 
@@ -73,89 +70,124 @@ All networks are isolated via pfSense with dedicated firewall rules per segment.
 ### 🔴 Kali Linux Attack Chain
 
 #### Phase 1 — Reconnaissance
-**Tool:** Nmap  
-**Commands:**
+
+**Tools:** Nmap
 ```bash
 sudo nmap -sn 192.168.2.0/24
 sudo nmap -sS -sV -A -T4 192.168.2.10
 sudo nmap -O 192.168.2.10
-![Description](Reconn.png)
-**Screenshot:** `ports&services.png`
-**Screenshot:** `osDetection.png`
 ```
-**Detected By:** Suricata  
-**Signatures:** `ET SCAN`, `ICMP PING DETECTED`  
-**Screenshot:** `phase1-recon-splunk.png`  
+
+**OS Detection:**
+
+![OS Detection](osDetection.png)
+
+**Port & Services Scan:**
+
+![Ports and Services](ports&services.png)
+
+**Detected in Splunk:**
+
+![Splunk Phase 1](splunkphase1.png)
+
 **Splunk Query:**
 ```
 index=suricata event_type=alert | table timestamp src_ip dest_ip alert.signature
 ```
 
+**MITRE:** T1595 - Active Scanning, T1046 - Network Service Scanning
+
 ---
 
 #### Phase 2 — Enumeration
-**Tool:** Nmap SMB scripts, CrackMapExec  
-**Commands:**
+
+**Tools:** Nmap SMB scripts, CrackMapExec
 ```bash
 sudo nmap --script=smb-enum-shares,smb-enum-users -p 445 192.168.2.10
 crackmapexec smb 192.168.2.10 --users --shares
 ```
-**Detected By:** Suricata  
-**Signatures:** `SURICATA SMB malformed request dialects`  
-**Screenshot:** `screenshots/phase2-enum-splunk.png`  
+
+**CrackMapExec AD Enumeration:**
+
+![CrackMapExec](CrackMapExec_AD_ENUM.png)
+
+**Detected in Splunk (SMB alerts):**
+
+![Splunk SMB](splunk_smb.png)
+
 **Splunk Query:**
 ```
 index=suricata event_type=alert app_proto=smb | table timestamp src_ip dest_ip alert.signature
 ```
 
+**MITRE:** T1135 - Network Share Discovery, T1087 - Account Discovery
+
 ---
 
 #### Phase 3 — Credential Attack (NTLM Brute Force)
-**Tool:** Metasploit smb_login module  
-**Commands:**
-```bash
-use auxiliary/scanner/smb/smb_login
-set RHOSTS 192.168.2.10
-set SMBUser administrator
-set PASS_FILE /tmp/passwords.txt
-run
-```
-**Detected By:** Suricata + Windows Event Logs  
-**Signatures:**
-- `ET INFO NTLM Session Setup Request - Negotiate`
-- `ET INFO NTLM Session Setup Request - Auth`
-- `ET INFO NTLMv1 Session Setup Response - Challenge`
-- Windows EventID 4625 (Failed Logon)
 
-**Screenshot:** `screenshots/phase3-bruteforce-splunk.png`  
+**Tools:** Hydra, Metasploit smb_login, CrackMapExec password spray
+
+**Hydra Brute Force:**
+
+![Hydra](hydra.png)
+
+**Password Spray:**
+
+![Password Spray](password_sprays.png)
+
+**Metasploit SMB Login:**
+
+![Metasploit](metaspPWD.png)
+
+**Detected in Splunk:**
+
+![Splunk Brute Force](splunk_crack.png)
+
 **Splunk Queries:**
 ```
 index=suricata event_type=alert app_proto=smb | table timestamp src_ip dest_ip alert.signature direction
 index=wineventlog EventCode=4625 | stats count by src_ip user | sort -count
 ```
 
+**MITRE:** T1110 - Brute Force, T1557 - Adversary in the Middle
+
 ---
 
 ### 🔵 Atomic Red Team — MITRE ATT&CK Simulation
 
-Atomic Red Team installed on Windows DC via `Invoke-AtomicRedTeam` module. Each test simulates a real adversary technique and validates detection capability in Splunk via Sysmon telemetry.
+Atomic Red Team installed on Windows DC via `Invoke-AtomicRedTeam`. Each test simulates a real adversary technique mapped to MITRE ATT&CK and validates detection in Splunk via Sysmon telemetry.
 
 #### T1057 — Process Discovery
-**Command:**
 ```powershell
 Invoke-AtomicTest T1057
 ```
-**Processes Detected:**
-- `whoami.exe` — system owner discovery
-- `HOSTNAME.EXE` — hostname enumeration
-- `tasklist.exe` — process listing
-- `WMIC.exe` — WMI process enumeration
-- `powershell.exe Get-Process` — PowerShell process discovery
-- `powershell.exe get-wmiObject Win32_Process` — WMI via PowerShell
-- `Taskmgr.exe` — Task Manager launch
+**Processes Detected:** `whoami`, `hostname`, `tasklist`, `wmic process get`, `Get-Process`, `Taskmgr.exe`
 
-**Screenshot:** `screenshots/T1057-process-discovery-splunk.png`  
-**Splunk Query:**
+![T1057 Splunk](AtommicT1057_SPLUNK.png)
+
+---
+
+#### T1087.001 — Account Discovery + T1059.001 PowerShell + T1003.001 Credential Dumping
+```powershell
+Invoke-AtomicTest T1087.001
+Invoke-AtomicTest T1059.001
+Invoke-AtomicTest T1003.001
+```
+
+![Atomic T1059 T1003](Atomic_T1059_T1003_Splunk.png)
+
+---
+
+#### Additional Atomic Red Team Results
+
+![Atomic R1](AtomicR1.png)
+
+![Atomic R2](AtomicR2.png)
+
+![Atomic R3](AtomicR3.png)
+
+**Splunk Query used for all Atomic tests:**
 ```
 index=wineventlog source="WinEventLog:Microsoft-Windows-Sysmon/Operational"
 | rex field=_raw "<Image>(?<Image>[^<]+)</Image>"
@@ -168,36 +200,6 @@ index=wineventlog source="WinEventLog:Microsoft-Windows-Sysmon/Operational"
 
 ---
 
-#### T1087.001 — Local Account Discovery
-**Command:**
-```powershell
-Invoke-AtomicTest T1087.001
-```
-**Processes Detected:** `net.exe user`, `net1.exe`, `whoami /groups`  
-**Screenshot:** `screenshots/T1087-account-discovery-splunk.png`
-
----
-
-#### T1059.001 — PowerShell Execution
-**Command:**
-```powershell
-Invoke-AtomicTest T1059.001
-```
-**Processes Detected:** Encoded PowerShell commands, download cradles  
-**Screenshot:** `screenshots/T1059-powershell-splunk.png`
-
----
-
-#### T1003.001 — LSASS Credential Dumping
-**Command:**
-```powershell
-Invoke-AtomicTest T1003.001
-```
-**Processes Detected:** LSASS memory access attempts  
-**Screenshot:** `screenshots/T1003-credential-dump-splunk.png`
-
----
-
 ## MITRE ATT&CK Coverage
 
 | Phase | Technique ID | Technique | Tool | Detected |
@@ -206,7 +208,7 @@ Invoke-AtomicTest T1003.001
 | Reconnaissance | T1046 | Network Service Scanning | Nmap | ✅ Suricata |
 | Enumeration | T1135 | Network Share Discovery | CrackMapExec | ✅ Suricata |
 | Enumeration | T1087 | Account Discovery | Nmap SMB scripts | ✅ Suricata |
-| Credential Access | T1110 | Brute Force | Metasploit smb_login | ✅ Suricata + EID 4625 |
+| Credential Access | T1110 | Brute Force | Hydra + Metasploit | ✅ Suricata + EID 4625 |
 | Credential Access | T1557 | Adversary in the Middle | NTLM Capture | ✅ Suricata |
 | Discovery | T1057 | Process Discovery | Atomic Red Team | ✅ Sysmon EID 1 |
 | Discovery | T1087.001 | Local Account Discovery | Atomic Red Team | ✅ Sysmon EID 1 |
@@ -217,7 +219,7 @@ Invoke-AtomicTest T1003.001
 
 ## Key Splunk Queries
 
-**All Suricata IDS Alerts:**
+**All Suricata Alerts:**
 ```
 index=suricata event_type=alert | table timestamp src_ip dest_ip alert.signature alert.severity | sort -timestamp
 ```
@@ -249,11 +251,6 @@ index=suricata OR index=wineventlog (EventCode=4625 OR EventCode=4624 OR event_t
 | sort -_time
 ```
 
-**Top Attack Signatures:**
-```
-index=suricata event_type=alert | top limit=10 alert.signature
-```
-
 ---
 
 ## Detection Coverage
@@ -264,11 +261,10 @@ index=suricata event_type=alert | top limit=10 alert.signature
 | Network Scanning | SMB malformed request detection | Suricata |
 | Brute Force | NTLM auth attempt signatures | Suricata |
 | Failed Logins | EventID 4625 threshold alerting | Windows/Splunk |
-| Successful Logins | EventID 4624 after brute force | Windows/Splunk |
-| Process Creation | Sysmon EID 1, EventID 4688 | Sysmon/Splunk |
-| Credential Dumping | Sysmon EID 10 (process access) | Sysmon/Splunk |
+| Process Creation | Sysmon EID 1 | Sysmon/Splunk |
+| Credential Dumping | Sysmon EID 10 (LSASS access) | Sysmon/Splunk |
 | PowerShell Abuse | Sysmon EID 1 + script block logging | Sysmon/Splunk |
-| Firewall Activity | pfSense syslog allow/deny rules | pfSense/Splunk |
+| Firewall Activity | pfSense syslog allow/deny | pfSense/Splunk |
 
 ---
 
@@ -277,16 +273,15 @@ index=suricata event_type=alert | top limit=10 alert.signature
 - Network segmentation and VLAN design using pfSense on a Linux host
 - VMware Workstation homelab design and configuration
 - Suricata IDS deployment, rule management and alert tuning
-- Splunk log ingestion, indexing and correlation across multiple data sources
+- Splunk log ingestion, indexing and correlation across multiple sources
 - Sysmon deployment and configuration for endpoint visibility
 - pfSense syslog forwarding to Splunk for network-layer detection
 - Active Directory administration and attack surface awareness
-- Offensive security techniques using Kali Linux and Metasploit
+- Offensive security using Kali Linux, Hydra, and Metasploit
 - MITRE ATT&CK technique simulation using Atomic Red Team
-- Threat detection and incident investigation workflow
 - End-to-end SOC workflow: attack simulation → detection → investigation
 
-
+---
 
 ## Upcoming Additions
 
@@ -300,7 +295,6 @@ index=suricata event_type=alert | top limit=10 alert.signature
 
 ## References
 
-- [Cyberwox Academy Homelab Guide](https://blog.cyberwoxacademy.com/post/building-a-cybersecurity-homelab)
 - [Suricata Documentation](https://docs.suricata.io)
 - [Splunk Documentation](https://docs.splunk.com)
 - [MITRE ATT&CK Framework](https://attack.mitre.org)
