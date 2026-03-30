@@ -283,15 +283,13 @@ index=suricata OR index=wineventlog (EventCode=4625 OR EventCode=4624 OR event_t
 
 ---
 
-## Upcoming Additions
+This project simulates a real-world SOC capable of:
 
-- [ ] Phase 4 — Exploitation (EternalBlue MS17-010)
-- [ ] Phase 5 — Post Exploitation (Mimikatz credential dumping)
-- [ ] Splunk custom dashboards with attack timeline visualization
-- [ ] BloodHound Active Directory attack path mapping
-- [ ] Windows 10 endpoint added to domain with Sysmon
+Detecting advanced threats
+Correlating multi-source data
+==> Next Step 
+Responding automatically to attacks
 
----
 
 ## References
 
