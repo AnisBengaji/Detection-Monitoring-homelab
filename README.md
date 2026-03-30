@@ -79,7 +79,7 @@ All networks are isolated via pfSense with dedicated firewall rules per segment.
 sudo nmap -sn 192.168.2.0/24
 sudo nmap -sS -sV -A -T4 192.168.2.10
 sudo nmap -O 192.168.2.10
-**Screenshot:** `Reconn.png`
+![Description](Reconn.png)
 **Screenshot:** `ports&services.png`
 **Screenshot:** `osDetection.png`
 ```
