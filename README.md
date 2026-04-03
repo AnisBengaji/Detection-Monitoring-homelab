@@ -307,7 +307,7 @@ Splunk Alert → Webhook → n8n → JavaScript (parse + classify) → SSH (pfSe
 Three saved searches in Splunk are configured with a webhook action pointing to the n8n instance at `192.168.3.10:5678`:
 
 ![Splunk Alerts](BruteForce_alert.png) 
-![Splunk Alerts](ProcessD.png)
+![Splunk Alerts](ProcessD_alert.png)
 ![Splunk Alerts](Recon_alert.png)
 
 
@@ -348,7 +348,7 @@ Each alert type produces a formatted Discord message:
 ![n8n Workflow](Recon_notif.png)
 
 **Brute Force / Endpoint:**
-![n8n Workflow](BruteForce_norif.png)
+![n8n Workflow](BruteForce_notif.png)
 
 **Process Dicovery , powershell abuse / Endpoint:**
 ![n8n Workflow](ProcessD_notif.png)
