@@ -350,7 +350,7 @@ Each alert type produces a formatted Discord message:
 **Brute Force / Endpoint:**
 ![n8n Workflow](BruteForce_notif.png)
 
-**Process Dicovery , powershell abuse / Endpoint:**
+**Process Dicovery  / Endpoint:**
 ![n8n Workflow](ProcessD_notif.png)
 
 
