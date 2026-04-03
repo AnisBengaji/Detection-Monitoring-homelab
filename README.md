@@ -1,6 +1,6 @@
 # Cybersecurity Homelab — Detection & Monitoring
 
-A virtualized SOC environment built on Pop OS using VMware Workstation, simulating a corporate Active Directory environment with full network segmentation, intrusion detection, and SIEM integration. This lab covers the full SOC workflow: attack simulation → log ingestion → detection → investigation.
+A virtualized SOC environment built on Pop OS using VMware Workstation, simulating a corporate Active Directory environment with full network segmentation, intrusion detection, and SIEM integration. This lab covers the full SOC workflow: attack simulation → log ingestion → detection → investigation → automated response.
 
 ---
 
@@ -21,6 +21,7 @@ A virtualized SOC environment built on Pop OS using VMware Workstation, simulati
 | SIEM | Splunk Enterprise |
 | Identity & Access | Active Directory (Windows Server 2019) |
 | Attack Simulation | Kali Linux + Atomic Red Team |
+| SOAR Automation | n8n |
 
 ---
 
@@ -64,23 +65,13 @@ A virtualized SOC environment built on Pop OS using VMware Workstation, simulati
 - Covers EventIDs: 4624, 4625, 4634, 4672, 4688, 4720, 4732
 
 ### Suricata → Splunk
-Suricata deployed on the monitoring network to inspect mirrored traffic
-Logs generated in EVE JSON format (/var/log/suricata/eve.json)
-
-Log Forwarding:
-Splunk Universal Forwarder installed on the Suricata VM
-Monitors the EVE log file:
-
-/var/log/suricata/eve.json
-- Logs forwarded to Splunk indexer at:
-- 192.168.4.10:9997
-
+Suricata deployed on the monitoring network to inspect mirrored traffic. Logs generated in EVE JSON format at `/var/log/suricata/eve.json`. Splunk Universal Forwarder installed on the Suricata VM forwards logs to the Splunk indexer at `192.168.4.10:9997`.
 
 ---
 
 ## Attack Scenarios & Detection
 
-###  Kali Linux Attack Chain
+### Kali Linux Attack Chain
 
 #### Phase 1 — Reconnaissance
 
@@ -104,9 +95,7 @@ sudo nmap -O 192.168.2.10
 ![Splunk Phase 1](splunkphase1.png)
 
 **Splunk Query:**
-```
 index=suricata event_type=alert | table timestamp src_ip dest_ip alert.signature
-```
 
 **MITRE:** T1595 - Active Scanning, T1046 - Network Service Scanning
 
@@ -129,9 +118,8 @@ crackmapexec smb 192.168.2.10 --users --shares
 ![Splunk SMB](splunk_smb.png)
 
 **Splunk Query:**
-```
 index=suricata event_type=alert app_proto=smb | table timestamp src_ip dest_ip alert.signature
-```
+
 
 **MITRE:** T1135 - Network Share Discovery, T1087 - Account Discovery
 
@@ -158,16 +146,14 @@ index=suricata event_type=alert app_proto=smb | table timestamp src_ip dest_ip a
 ![Splunk Brute Force](splunk_crack.png)
 
 **Splunk Queries:**
-```
 index=suricata event_type=alert app_proto=smb | table timestamp src_ip dest_ip alert.signature direction
 index=wineventlog EventCode=4625 | stats count by src_ip user | sort -count
-```
 
 **MITRE:** T1110 - Brute Force, T1557 - Adversary in the Middle
 
 ---
 
-###  Atomic Red Team — MITRE ATT&CK Simulation
+### Atomic Red Team — MITRE ATT&CK Simulation
 
 Atomic Red Team installed on Windows DC via `Invoke-AtomicRedTeam`. Each test simulates a real adversary technique mapped to MITRE ATT&CK and validates detection in Splunk via Sysmon telemetry.
 
@@ -201,7 +187,7 @@ Invoke-AtomicTest T1003.001
 ![Atomic R3](AtomicR3.png)
 
 **Splunk Query used for all Atomic tests:**
-```
+
 index=wineventlog source="WinEventLog:Microsoft-Windows-Sysmon/Operational"
 | rex field=_raw "<Image>(?<Image>[^<]+)</Image>"
 | rex field=_raw "<CommandLine>(?<CommandLine>[^<]+)</CommandLine>"
@@ -209,91 +195,40 @@ index=wineventlog source="WinEventLog:Microsoft-Windows-Sysmon/Operational"
 | where NOT match(Image, "splunk")
 | table _time Image CommandLine User
 | sort -_time
-```
 
 ---
-
-## MITRE ATT&CK Coverage
-
-| Phase | Technique ID | Technique | Tool | Detected |
-|-------|-------------|-----------|------|----------|
-| Reconnaissance | T1595 | Active Scanning | Nmap | Suricata |
-| Reconnaissance | T1046 | Network Service Scanning | Nmap |  Suricata |
-| Enumeration | T1135 | Network Share Discovery | CrackMapExec |  Suricata |
-| Enumeration | T1087 | Account Discovery | Nmap SMB scripts |  Suricata |
-| Credential Access | T1110 | Brute Force | Hydra + Metasploit |  Suricata + EID 4625 |
-| Credential Access | T1557 | Adversary in the Middle | NTLM Capture |  Suricata |
-| Discovery | T1057 | Process Discovery | Atomic Red Team |  Sysmon EID 1 |
-| Discovery | T1087.001 | Local Account Discovery | Atomic Red Team |  Sysmon EID 1 |
-| Execution | T1059.001 | PowerShell | Atomic Red Team |  Sysmon EID 1 |
-| Credential Access | T1003.001 | LSASS Dump | Atomic Red Team |  Sysmon EID 10 |
-
----
-
-## Key Splunk Queries
-
-**All Suricata Alerts:**
-```
-index=suricata event_type=alert | table timestamp src_ip dest_ip alert.signature alert.severity | sort -timestamp
-```
-
-**SMB Attack Detection:**
-```
-index=suricata event_type=alert app_proto=smb | table timestamp src_ip dest_ip alert.signature direction | sort -timestamp
-```
-
-**Brute Force Detection:**
-```
-index=wineventlog EventCode=4625 | stats count by src_ip user | sort -count
-```
-
-**Sysmon Process Creation:**
-```
-index=wineventlog source="WinEventLog:Microsoft-Windows-Sysmon/Operational"
-| rex field=_raw "<Image>(?<Image>[^<]+)</Image>"
-| rex field=_raw "<CommandLine>(?<CommandLine>[^<]+)</CommandLine>"
-| where NOT match(Image, "splunk")
-| table _time Image CommandLine User
-| sort -_time
-```
-
-**Full Attack Timeline:**
-```
-index=suricata OR index=wineventlog (EventCode=4625 OR EventCode=4624 OR event_type=alert)
-| table _time src_ip dest_ip alert.signature EventCode user
-| sort -_time
-```
-
-
-## Skills Demonstrated
-
-- Network segmentation and VLAN design using pfSense on a Linux host
-- VMware Workstation homelab design and configuration
-- Suricata IDS deployment, rule management and alert tuning
-- Splunk log ingestion, indexing and correlation across multiple sources
-- Sysmon deployment and configuration for endpoint visibility
-- pfSense syslog forwarding to Splunk for network-layer detection
-- Active Directory administration and attack surface awareness
-- Offensive security using Kali Linux, Hydra, and Metasploit
-- MITRE ATT&CK technique simulation using Atomic Red Team
-- End-to-end SOC workflow: attack simulation → detection → investigation
-
----
-
----
-
 
 ## Automated Detection & Response (n8n SOAR Workflow)
 
-Created splunk alerts for different scenarios of attacks : Recon , Brute Force , process discovery .
+To extend the lab beyond passive detection, Splunk alerts were configured for three attack scenarios and connected to an n8n SOAR workflow that automatically classifies the threat, blocks the attacker at the firewall, and sends a real-time Discord notification — reducing mean time to respond (MTTR) to near zero.
 
-created A SOAR workflow built in n8n connects Splunk alerting to automated response actions, reducing mean time to respond (MTTR) to near zero for known attack patterns.
-
-### Architecture
+### Workflow Architecture
 
 Splunk Alert → Webhook → n8n → JavaScript (parse + classify) → SSH (pfSense block) → Discord (notify)
 
-### Workflow Nodes
+---
+
+### Splunk Alerts Configured
+
+Three saved searches in Splunk are configured with a webhook action pointing to the n8n instance at `192.168.3.10:5678`. Each alert fires when its condition is met and forwards the full result payload to n8n via HTTP POST.
+
+**Reconnaissance Alert:**
+
+![Recon Alert](Recon_alert.png)
+
+**Brute Force Alert:**
+
+![Brute Force Alert](BruteForce_alert.png)
+
+**Process Discovery Alert:**
+
+![Process Discovery Alert](ProcessD_alert.png)
+
+---
+
+### n8n Workflow
+
+![n8n Workflow](workflow.png)
 
 | Node | Type | Purpose |
 |------|------|---------|
@@ -302,14 +237,64 @@ Splunk Alert → Webhook → n8n → JavaScript (parse + classify) → SSH (pfSe
 | Execute a command | SSH | Runs pfctl command on pfSense to block attacker IP |
 | HTTP Request | POST | Sends formatted alert to Discord webhook |
 
-### Splunk Alerts Configured
+The JavaScript node classifies the incoming alert into one of two types based on the payload:
 
-Three saved searches in Splunk are configured with a webhook action pointing to the n8n instance at `192.168.3.10:5678`:
+- **Network Alert** (Reconnaissance / Brute Force): extracts `src_ip`, `dest_ip`, `alert.signature` from Suricata fields
+- **Endpoint Alert** (Process Discovery): extracts `ComputerName`, `Image`, `CommandLine` from Sysmon fields
 
-![Splunk Alerts](BruteForce_alert.png) 
-![Splunk Alerts](ProcessD_alert.png)
-![Splunk Alerts](Recon_alert.png)
+For network alerts, the workflow SSHs into pfSense and executes:
+```bash
+pfctl -t blocklist -T add <src_ip> && echo "<src_ip>" >> /var/db/aliastables/blocklist.txt && echo "Blocked <src_ip>"
+```
 
+This immediately drops traffic from the attacker IP at the firewall level and writes the entry to the persistent alias table so the block survives rule reloads.
+
+---
+
+### Discord Notifications
+
+Each alert type produces a formatted Discord message delivered in real time.
+
+**Reconnaissance:**
+
+![Recon Notification](Recon_notif.png)
+
+**Brute Force:**
+
+![Brute Force Notification](BruteForce_notif.png)
+
+**Process Discovery:**
+
+![Process Discovery Notification](ProcessD_notif.png)
+
+---
+
+### Automated Response Summary
+
+| Attack | Detection Source | Block | Discord Alert |
+|--------|-----------------|-------|---------------|
+| Reconnaissance | Suricata | ✅ pfSense pfctl | ✅ |
+| Brute Force | Suricata + EID 4625 | ✅ pfSense pfctl | ✅ |
+| Process Discovery | Sysmon EID 1 | ❌ Local process, no IP | ✅ |
+
+---
+
+## MITRE ATT&CK Coverage
+
+| Phase | Technique ID | Technique | Tool | Detected |
+|-------|-------------|-----------|------|----------|
+| Reconnaissance | T1595 | Active Scanning | Nmap | ✅ Suricata |
+| Reconnaissance | T1046 | Network Service Scanning | Nmap | ✅ Suricata |
+| Enumeration | T1135 | Network Share Discovery | CrackMapExec | ✅ Suricata |
+| Enumeration | T1087 | Account Discovery | Nmap SMB scripts | ✅ Suricata |
+| Credential Access | T1110 | Brute Force | Hydra + Metasploit | ✅ Suricata + EID 4625 |
+| Credential Access | T1557 | Adversary in the Middle | NTLM Capture | ✅ Suricata |
+| Discovery | T1057 | Process Discovery | Atomic Red Team | ✅ Sysmon EID 1 |
+| Discovery | T1087.001 | Local Account Discovery | Atomic Red Team | ✅ Sysmon EID 1 |
+| Execution | T1059.001 | PowerShell | Atomic Red Team | ✅ Sysmon EID 1 |
+| Credential Access | T1003.001 | LSASS Dump | Atomic Red Team | ✅ Sysmon EID 10 |
+
+---
 
 ## Detection Coverage
 
@@ -326,44 +311,52 @@ Three saved searches in Splunk are configured with a webhook action pointing to 
 
 ---
 
-### n8n Workflow
+## Key Splunk Queries
 
-The JavaScript node classifies the incoming alert into one of three types based on the payload:
+**All Suricata Alerts:**
 
-- **Network Alert** (Reconnaissance / Brute Force): extracts `src_ip`, `dest_ip`, `alert.signature`
-- **Endpoint Alert** (Process Discovery): extracts `ComputerName`, `Image`, `CommandLine`
+index=suricata event_type=alert | table timestamp src_ip dest_ip alert.signature alert.severity | sort -timestamp
 
-For network alerts, the workflow SSHs into pfSense and executes:
-```bash
-pfctl -t blocklist -T add <src_ip> && echo "<src_ip>" >> /var/db/aliastables/blocklist.txt && echo "Blocked <src_ip>"
-```
+**SMB Attack Detection:**
+index=suricata event_type=alert app_proto=smb | table timestamp src_ip dest_ip alert.signature direction | sort -timestamp
 
-![n8n Workflow](workflow.png)
+**Brute Force Detection:**
+index=wineventlog EventCode=4625 | stats count by src_ip user | sort -count
+**Sysmon Process Creation:**
+index=wineventlog source="WinEventLog:Microsoft-Windows-Sysmon/Operational"
+| rex field=_raw "<Image>(?<Image>[^<]+)</Image>"
+| rex field=_raw "<CommandLine>(?<CommandLine>[^<]+)</CommandLine>"
+| where NOT match(Image, "splunk")
+| table _time Image CommandLine User
+| sort -_time
 
-### Discord Notifications
+**Full Attack Timeline:**
 
-Each alert type produces a formatted Discord message:
+index=suricata OR index=wineventlog (EventCode=4625 OR EventCode=4624 OR event_type=alert)
+| table _time src_ip dest_ip alert.signature EventCode user
+| sort -_time
 
-**Reconnaissance / Network Alert:**
-![n8n Workflow](Recon_notif.png)
+---
 
-**Brute Force / Endpoint:**
-![n8n Workflow](BruteForce_notif.png)
+## Skills Demonstrated
 
-**Process Dicovery  / Endpoint:**
-![n8n Workflow](ProcessD_notif.png)
-
-
-### Skills Demonstrated
-
+- Network segmentation and VLAN design using pfSense on a Linux host
+- VMware Workstation homelab design and configuration
+- Suricata IDS deployment, rule management and alert tuning
+- Splunk log ingestion, indexing and correlation across multiple sources
+- Sysmon deployment and configuration for endpoint visibility
+- pfSense syslog forwarding to Splunk for network-layer detection
+- Active Directory administration and attack surface awareness
+- Offensive security using Kali Linux, Hydra, and Metasploit
+- MITRE ATT&CK technique simulation using Atomic Red Team
 - SOAR workflow design and implementation using n8n
 - Webhook-based integration between Splunk and external automation
 - Automated firewall response via SSH and pfctl
 - Alert classification and enrichment using JavaScript
 - Real-time notification pipeline to Discord
-- End-to-end automated SOC response: detect → classify → block → notify
+- End-to-end SOC workflow: attack simulation → detection → automated response
 
-
+---
 
 ## Lessons Learned
 
@@ -371,7 +364,7 @@ Building this lab from scratch exposed a number of real-world challenges that si
 
 ---
 
-###  Infrastructure & Networking
+### Infrastructure & Networking
 
 **VMware Host-Only Networking and Promiscuous Mode**
 The single most time-consuming challenge in this lab was getting Suricata to see network traffic. VMware Workstation on Linux blocks promiscuous mode by default at the kernel level, meaning even with the correct VMnet assignments, the Suricata VM received no mirrored traffic. The fix required editing the VM's `.vmx` file directly to add `ethernet0.noPromisc = "FALSE"` and running `chmod a+rw /dev/vmnet*` on the host after every reboot. I eventually automated this with a systemd service. This mirrors a real-world challenge where network taps and SPAN ports require careful physical and logical configuration to function correctly.
@@ -384,7 +377,7 @@ Getting the Splunk Universal Forwarder on the Windows DC to reach the Splunk ser
 
 ---
 
-###  Detection & Log Ingestion
+### Detection & Log Ingestion
 
 **Splunk Forwarder Pointing to the Wrong IP**
 After migrating the Splunk VM from NAT to a dedicated network segment, the Universal Forwarder on the Windows DC was still pointing to the old NAT IP (`172.16.5.128`). Logs appeared to be configured correctly but nothing was arriving in Splunk. The fix was straightforward once identified — removing and re-adding the forward server — but it reinforced an important SOC lesson: always verify end-to-end connectivity, not just configuration files. A misconfigured forwarder silently drops logs with no obvious alert.
@@ -397,7 +390,7 @@ The Windows DC was operating in UTC+1 while the Splunk indexer was in UTC. This 
 
 ---
 
-###  Intrusion Detection
+### Intrusion Detection
 
 **Suricata Interface Configuration**
 The default Suricata configuration references `eth0` across multiple sections of `suricata.yaml`. On Ubuntu 22.04 the interface is named `ens33`. Despite updating the primary `af-packet` section, other sections of the config still referenced `eth0`, causing silent failures where Suricata started but processed zero packets. Lesson: always validate the full configuration file, not just the obvious section, and use `suricata -T -c suricata.yaml -v` to test before deploying.
@@ -407,7 +400,7 @@ A physical SPAN port mirrors all traffic on a switch to a designated monitoring 
 
 ---
 
-###  Attack Simulation
+### Attack Simulation
 
 **Atomic Red Team and Field Parsing**
 When running Atomic Red Team tests, the Sysmon events were arriving in Splunk but in raw XML format, making it impossible to filter by process name or command line using standard field names. This led me to write custom `rex` extractions to parse `Image`, `CommandLine`, and `User` fields from the raw XML. This was an unexpectedly valuable exercise — understanding how to extract fields from unparsed logs is a core skill for any SOC analyst dealing with non-standard log sources.
@@ -417,7 +410,7 @@ Running the Metasploit SMB login scanner initially produced alerts in Suricata b
 
 ---
 
-###  General
+### General
 
 **Documentation is Part of the Lab**
 The most underestimated part of this project was documentation. Keeping track of what worked, what didn't, and why took as much time as the technical work itself. This discipline — of writing down decisions, configurations, and failures — is directly transferable to incident response work where a clear timeline and evidence trail are critical.
@@ -425,11 +418,17 @@ The most underestimated part of this project was documentation. Keeping track of
 **Iterative Problem Solving Over Perfection**
 Almost nothing worked on the first attempt. The approach that worked best was isolating one variable at a time — confirming traffic existed with `tcpdump` before debugging Suricata, confirming port connectivity with `Test-NetConnection` before debugging Splunk forwarding. This systematic methodology is exactly how SOC analysts and incident responders approach unknown problems in production environments.
 
+**SOAR Integration Debugging**
+Building the n8n automation pipeline introduced a new category of challenges distinct from infrastructure work. Debugging required tracing failures across four different systems simultaneously — Splunk alert delivery, n8n webhook reception, SSH command execution on pfSense, and Discord API responses. Each node could fail silently or with misleading error messages. The key lesson was to test each node in isolation before connecting them, and to always verify that data is flowing in the expected format at each stage rather than assuming upstream nodes are outputting correctly.
+
+---
+
 ## References
-- [Cyberwox Academy Homelab Guide](https://blog.cyberwoxacademy.com/post/building-a-cybersecurity-homelab) check it for homelab installation + setup
+- [Cyberwox Academy Homelab Guide](https://blog.cyberwoxacademy.com/post/building-a-cybersecurity-homelab)
 - [Suricata Documentation](https://docs.suricata.io)
 - [Splunk Documentation](https://docs.splunk.com)
 - [MITRE ATT&CK Framework](https://attack.mitre.org)
 - [SwiftOnSecurity Sysmon Config](https://github.com/SwiftOnSecurity/sysmon-config)
 - [Atomic Red Team](https://github.com/redcanaryco/atomic-red-team)
 - [Invoke-AtomicRedTeam](https://github.com/redcanaryco/invoke-atomicredteam)
+- [n8n Documentation](https://docs.n8n.io)
