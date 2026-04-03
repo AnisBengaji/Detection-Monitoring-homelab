@@ -264,7 +264,52 @@ index=suricata OR index=wineventlog (EventCode=4625 OR EventCode=4624 OR event_t
 | sort -_time
 ```
 
+
+## Skills Demonstrated
+
+- Network segmentation and VLAN design using pfSense on a Linux host
+- VMware Workstation homelab design and configuration
+- Suricata IDS deployment, rule management and alert tuning
+- Splunk log ingestion, indexing and correlation across multiple sources
+- Sysmon deployment and configuration for endpoint visibility
+- pfSense syslog forwarding to Splunk for network-layer detection
+- Active Directory administration and attack surface awareness
+- Offensive security using Kali Linux, Hydra, and Metasploit
+- MITRE ATT&CK technique simulation using Atomic Red Team
+- End-to-end SOC workflow: attack simulation → detection → investigation
+
 ---
+
+---
+
+
+## Automated Detection & Response (n8n SOAR Workflow)
+
+Created splunk alerts for different scenarios of attacks : Recon , Brute Force , process discovery .
+
+created A SOAR workflow built in n8n connects Splunk alerting to automated response actions, reducing mean time to respond (MTTR) to near zero for known attack patterns.
+
+### Architecture
+
+Splunk Alert → Webhook → n8n → JavaScript (parse + classify) → SSH (pfSense block) → Discord (notify)
+
+### Workflow Nodes
+
+| Node | Type | Purpose |
+|------|------|---------|
+| Webhook | Trigger | Receives POST from Splunk alert action |
+| Code in JavaScript | Transform | Parses alert payload, classifies attack type, builds Discord message |
+| Execute a command | SSH | Runs pfctl command on pfSense to block attacker IP |
+| HTTP Request | POST | Sends formatted alert to Discord webhook |
+
+### Splunk Alerts Configured
+
+Three saved searches in Splunk are configured with a webhook action pointing to the n8n instance at `192.168.3.10:5678`:
+
+![Splunk Alerts](splunk_alerts_placeholder.png) //alerts
+![Splunk Alerts](splunk_alerts_placeholder.png)
+![Splunk Alerts](splunk_alerts_placeholder.png)
+
 
 ## Detection Coverage
 
@@ -281,20 +326,44 @@ index=suricata OR index=wineventlog (EventCode=4625 OR EventCode=4624 OR event_t
 
 ---
 
-## Skills Demonstrated
+### n8n Workflow
 
-- Network segmentation and VLAN design using pfSense on a Linux host
-- VMware Workstation homelab design and configuration
-- Suricata IDS deployment, rule management and alert tuning
-- Splunk log ingestion, indexing and correlation across multiple sources
-- Sysmon deployment and configuration for endpoint visibility
-- pfSense syslog forwarding to Splunk for network-layer detection
-- Active Directory administration and attack surface awareness
-- Offensive security using Kali Linux, Hydra, and Metasploit
-- MITRE ATT&CK technique simulation using Atomic Red Team
-- End-to-end SOC workflow: attack simulation → detection → investigation
+The JavaScript node classifies the incoming alert into one of three types based on the payload:
 
----
+- **Network Alert** (Reconnaissance / Brute Force): extracts `src_ip`, `dest_ip`, `alert.signature`
+- **Endpoint Alert** (Process Discovery): extracts `ComputerName`, `Image`, `CommandLine`
+
+For network alerts, the workflow SSHs into pfSense and executes:
+```bash
+pfctl -t blocklist -T add <src_ip> && echo "<src_ip>" >> /var/db/aliastables/blocklist.txt && echo "Blocked <src_ip>"
+```
+
+![n8n Workflow](n8n_workflow_placeholder.png)
+
+### Discord Notifications
+
+Each alert type produces a formatted Discord message:
+
+**Reconnaissance / Network Alert:**
+![n8n Workflow](n8n_workflow_placeholder.png)
+
+**Brute Force / Endpoint:**
+![n8n Workflow](n8n_workflow_placeholder.png)
+
+**Process Dicovery , powershell abuse / Endpoint:**
+![n8n Workflow](n8n_workflow_placeholder.png)
+
+
+### Skills Demonstrated
+
+- SOAR workflow design and implementation using n8n
+- Webhook-based integration between Splunk and external automation
+- Automated firewall response via SSH and pfctl
+- Alert classification and enrichment using JavaScript
+- Real-time notification pipeline to Discord
+- End-to-end automated SOC response: detect → classify → block → notify
+
+
 
 ## Lessons Learned
 
