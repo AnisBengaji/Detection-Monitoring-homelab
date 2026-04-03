@@ -306,9 +306,9 @@ Splunk Alert → Webhook → n8n → JavaScript (parse + classify) → SSH (pfSe
 
 Three saved searches in Splunk are configured with a webhook action pointing to the n8n instance at `192.168.3.10:5678`:
 
-![Splunk Alerts](splunk_alerts_placeholder.png) //alerts
-![Splunk Alerts](splunk_alerts_placeholder.png)
-![Splunk Alerts](splunk_alerts_placeholder.png)
+![Splunk Alerts](BruteForce_alert.png) 
+![Splunk Alerts](ProcessD.png)
+![Splunk Alerts](Recon_alert.png)
 
 
 ## Detection Coverage
@@ -338,20 +338,20 @@ For network alerts, the workflow SSHs into pfSense and executes:
 pfctl -t blocklist -T add <src_ip> && echo "<src_ip>" >> /var/db/aliastables/blocklist.txt && echo "Blocked <src_ip>"
 ```
 
-![n8n Workflow](n8n_workflow_placeholder.png)
+![n8n Workflow](workflow.png)
 
 ### Discord Notifications
 
 Each alert type produces a formatted Discord message:
 
 **Reconnaissance / Network Alert:**
-![n8n Workflow](n8n_workflow_placeholder.png)
+![n8n Workflow](Recon_notif.png)
 
 **Brute Force / Endpoint:**
-![n8n Workflow](n8n_workflow_placeholder.png)
+![n8n Workflow](BruteForce_norif.png)
 
 **Process Dicovery , powershell abuse / Endpoint:**
-![n8n Workflow](n8n_workflow_placeholder.png)
+![n8n Workflow](ProcessD_notif.png)
 
 
 ### Skills Demonstrated
